@@ -52,6 +52,10 @@ class PriceLevel:
         """The order with time priority at this price."""
         return next(iter(self._orders.values()))
 
+    def remove(self, order: Order) -> None:
+        del self._orders[order.order_id]
+        self.total -= order.remaining
+
     def __iter__(self) -> Iterator[Order]:
         return iter(self._orders.values())
 
@@ -88,6 +92,11 @@ class BookSide:
             level = self._levels[order.price] = PriceLevel(order.price)
             bisect.insort(self._prices, order.price)  # O(levels); books have few levels
         level.append(order)
+
+    def remove_level(self, price: int) -> None:
+        """Drop an empty price level."""
+        del self._levels[price]
+        del self._prices[bisect.bisect_left(self._prices, price)]
 
     def __len__(self) -> int:
         """Number of price levels."""
@@ -149,6 +158,30 @@ class Book:
         self.side(order.side).add(order)
         self._index[order.order_id] = order
         self.last_seq = order.seq
+
+    def fill(self, order_id: int, quantity: int) -> Order:
+        """Take `quantity` from a resting order; remove it once nothing remains.
+
+        Returns the order, whose `remaining` shows what is left. A partly filled order keeps
+        its place in the queue, because only its quantity changes.
+        """
+        order = self._index.get(order_id)
+        if order is None:
+            raise BookError(f"order {order_id} is not resting in the book")
+        if isinstance(quantity, bool) or not isinstance(quantity, int) or not 1 <= quantity <= order.remaining:
+            raise BookError(f"can fill 1 to {order.remaining} of order {order_id}, not {quantity!r}")
+        level = self.side(order.side).level(order.price)
+        order.remaining -= quantity
+        level.total -= quantity
+        if order.remaining == 0:
+            self._take_out(order, level)
+        return order
+
+    def _take_out(self, order: Order, level: PriceLevel) -> None:
+        level.remove(order)
+        del self._index[order.order_id]
+        if len(level) == 0:
+            self.side(order.side).remove_level(order.price)
 
     def get(self, order_id: int) -> Order | None:
         return self._index.get(order_id)

@@ -65,7 +65,9 @@ These are the rules the engine implements and the tests check. Real exchanges ha
 - **`models.py`:** `Side`, `Order` (resting state), `Trade`; validation of prices and quantities.
 - **`book.py`:** `PriceLevel` (orders at one price, FIFO), `BookSide` (levels sorted by price),
   `Book` (both sides plus an id index), and `check_invariants`.
-- **`engine.py`** (milestone 2): submit and cancel; applies rules 3–8.
+- **`engine.py`:** `MatchingEngine.submit` applies rules 3–7 and returns the trades, the
+  status (filled, partially filled, resting) and the quantity left resting. Cancellation
+  (rule 8) arrives in milestone 3.
 - **`replay.py`** (milestone 4): reads a scripted event file and replays it deterministically.
 
 ### Data structures
@@ -82,7 +84,8 @@ benchmark milestone measures this rather than assuming it.
 
 ## Testing strategy
 
-- Hand-worked examples, written out step by step, then reproduced by the engine.
+- Hand-worked examples, written out step by step, then reproduced by the engine
+  ([`walkthrough.md`](walkthrough.md) and `tests/test_walkthrough.py`).
 - Hypothesis property tests: random event sequences, with every invariant checked after every
   event, and results compared against a deliberately simple reference engine.
 - Mutation testing by hand: break a rule on purpose, confirm a test fails.
@@ -91,7 +94,7 @@ benchmark milestone measures this rather than assuming it.
 ## Milestones
 
 1. Models, book data structures, and invariants. *(complete)*
-2. Matching and partial fills, with a reference engine for differential tests.
+2. Matching and partial fills, with a reference engine for differential tests. *(complete)*
 3. Cancellation and quantity conservation, with stateful property tests.
 4. Scripted replay and a command-line tool.
 5. Visualization: step through a replay and see the book and trades.

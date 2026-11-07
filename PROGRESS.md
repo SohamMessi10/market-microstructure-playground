@@ -2,7 +2,7 @@
 
 ## Status
 
-Milestone 1 of 6 complete: models, book data structures, and invariants. Matching comes next.
+Milestone 2 of 6 complete: matching and partial fills. Cancellation comes next.
 The exchange rules and full plan are in [`docs/design.md`](docs/design.md).
 
 ## Milestones
@@ -30,17 +30,44 @@ The exchange rules and full plan are in [`docs/design.md`](docs/design.md).
 - The random test was measured to exercise real cases: over 300 runs, 558 refused crossing
   orders, books up to 13 price levels, and up to 4 orders queued at one price.
 
+### Milestone 2: matching and partial fills
+- `engine.py`: `MatchingEngine.submit(side, price, quantity)` trades an incoming order against
+  the best resting orders, oldest first at each price, at the resting price, until it is filled
+  or no longer crosses; any remainder rests at its limit. Returns a `SubmitResult` (trades,
+  status, filled, resting, average price). One counter supplies both order ids and arrival
+  numbers, so they can't disagree; an invalid order is refused before it uses an id.
+- `Book.fill` takes quantity from a resting order without moving it in its queue, and removes
+  the order, and its price level if empty, once nothing remains.
+- `docs/walkthrough.md` works through six orders by hand (a two-level sweep, price improvement,
+  a partial fill that rests). `tests/test_walkthrough.py` replays it and checks every number.
+- `tests/reference.py`: a deliberately simple engine (one flat list, full search per fill) that
+  shares no code with the real one. Hypothesis compares trades and both sides of the book after
+  every order, on three kinds of random sequences: a narrow price band, a wide one, and deep
+  sweeps (10–60 small orders, then 1–5 large ones).
+- Property tests check, after every order: invariants (including not crossed), quantity
+  conservation for the order and both sides of the book, trade price = resting price and never
+  worse than the limit, best prices first, consecutive trade ids, and determinism.
+- Mutation-checked: 13 deliberate bugs (trade at the incoming price, newest first, under-filling,
+  no remainder resting, stale level totals, empty levels kept, one trade per order, wrong seller
+  id, wrong status, repeated trade ids, lost trades, unweighted average price, removing the wrong
+  price level) each fail a test. The reference comparison alone catches the four central ones.
+- Coverage was measured, not assumed. The first random generators never had one order trade more
+  than 3–4 times, so deep sweeps were barely tested. Adding the deep-sweep generator raised that
+  to 12 trades across 11 price levels from a single order.
+
 ## Commands verified
 
 | Where | Python | Command | Result |
 |---|---|---|---|
 | Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 61 passed (milestone 1) |
+| Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 82 passed (milestone 2) |
 
 ## Next
 
-Milestone 2: the matching engine. Incoming orders trade against the best resting orders at the
-resting price, in price-time order, with partial fills resting the remainder. It will be
-checked against a deliberately simple reference engine on random order sequences.
+Milestone 3: cancellation. Cancelling removes only the remaining quantity; cancelling an
+unknown or finished order is refused with a reason. Each order's history is tracked so that
+original = filled + resting + cancelled can be checked, with a stateful Hypothesis test mixing
+submits and cancels.
 
 ## Concepts to review
 - What an order book is: bids, asks, best bid and ask, spread, depth.
@@ -50,3 +77,6 @@ checked against a deliberately simple reference engine on random order sequences
 - Choosing data structures by operation cost: dict for FIFO with O(1) removal, sorted list
   with bisect for the best price.
 - Testing the tester: why the invariant checker needs its own corruption tests.
+- Price improvement: why the incoming order trades at the resting price.
+- Differential testing against a simple reference implementation.
+- Measuring what random tests generate, instead of assuming they cover the hard cases.
