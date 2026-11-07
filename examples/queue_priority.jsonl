@@ -1,0 +1,7 @@
+# Price beats time, and time breaks ties. Replay with: mmp replay examples/queue_priority.jsonl
+{"type": "order", "side": "buy", "price": 100, "quantity": 5, "trader": "ana"}
+{"type": "order", "side": "buy", "price": 100, "quantity": 5, "trader": "ben", "note": "same price as ana, so ben queues behind her"}
+{"type": "order", "side": "buy", "price": 101, "quantity": 5, "trader": "cy", "note": "arrived last but bids higher, so cy goes first"}
+{"type": "order", "side": "sell", "price": 100, "quantity": 8, "trader": "dee", "note": "fills cy at 101, then ana at 100; ben gets nothing"}
+{"type": "cancel", "order_id": 1, "note": "ana cancels her last 2"}
+{"type": "order", "side": "sell", "price": 100, "quantity": 4, "trader": "eve", "note": "now ben is first in line at 100"}

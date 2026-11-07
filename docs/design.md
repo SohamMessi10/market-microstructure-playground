@@ -74,7 +74,9 @@ These are the rules the engine implements and the tests check. Real exchanges ha
   accepted (filled, cancelled, resting, state), which is what makes conservation checkable.
   Records are never discarded, so memory grows with the number of orders; that is fine for
   a simulator that replays scripted sessions, and a real engine would archive finished ones.
-- **`replay.py`** (milestone 4): reads a scripted event file and replays it deterministically.
+- **`replay.py`:** parses a script (below), replays it through a new engine, and formats the
+  result as a readable log or as JSON Lines.
+- **`cli.py`:** the `mmp replay` command.
 
 ### Data structures
 
@@ -87,6 +89,32 @@ These are the rules the engine implements and the tests check. Real exchanges ha
 A sorted list costs O(levels) to add a new price, but books have few active price levels and
 the list is contiguous memory, so it is simpler and usually faster than a tree in Python. The
 benchmark milestone measures this rather than assuming it.
+
+## Script format
+
+JSON Lines: one JSON object per line. Blank lines and lines starting with `#` are skipped.
+
+| Field | Order | Cancel |
+|---|---|---|
+| `type` | `"order"` | `"cancel"` |
+| `side` | `"buy"` or `"sell"` | |
+| `price` | whole number of ticks, at least 1 | |
+| `quantity` | whole number, at least 1 | |
+| `order_id` | | the order to cancel: orders are numbered 1, 2, 3… in script order |
+| `trader` | optional text, up to 50 characters | |
+| `note` | optional text, up to 200 characters, shown in the log | optional |
+
+Decisions:
+
+- **Order ids are not written in the script.** The engine assigns them, as a real exchange
+  does, so a script can't contain two orders with the same id or ids out of order.
+- **Strict parsing, all before running.** `101.0`, `"101"`, `true`, unknown fields, and
+  misspelled sides are errors. Every bad line is reported with its line number, and a script
+  with any error doesn't run at all, so the output never shows a half-finished replay.
+- **A refused cancel is not a script error.** Cancelling an order that already traded is a
+  normal event; it appears in the log as refused, and the replay continues.
+- **Exit codes:** 0 replayed; 1 the script can't be replayed (nothing ran); 2 wrong command
+  usage; 3 the engine failed its own consistency check afterwards (a bug).
 
 ## Testing strategy
 
@@ -102,6 +130,6 @@ benchmark milestone measures this rather than assuming it.
 1. Models, book data structures, and invariants. *(complete)*
 2. Matching and partial fills, with a reference engine for differential tests. *(complete)*
 3. Cancellation and quantity conservation, with stateful property tests. *(complete)*
-4. Scripted replay and a command-line tool.
+4. Scripted replay and a command-line tool. *(complete)*
 5. Visualization: step through a replay and see the book and trades.
 6. Benchmark (with workload and machine details) and README.

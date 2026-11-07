@@ -2,7 +2,7 @@
 
 ## Status
 
-Milestone 3 of 6 complete: cancellation and quantity conservation. Scripted replay comes next.
+Milestone 4 of 6 complete: scripted replay and the `mmp` command. Visualization comes next.
 The exchange rules and full plan are in [`docs/design.md`](docs/design.md).
 
 ## Milestones
@@ -79,6 +79,31 @@ The exchange rules and full plan are in [`docs/design.md`](docs/design.md).
   book quantities or trade sides, an unknown cancel reported as success) each fail a test. The
   state machine alone catches the four central ones.
 
+### Milestone 4: scripted replay and the `mmp` command
+- `replay.py`: a JSON Lines script format (orders and cancels; `#` comments and blank lines
+  skipped; optional trader and note). Parsing is strict and finishes before anything runs:
+  every bad line is listed with its line number (up to 20 shown), and a script with any error
+  doesn't run. File problems (missing, a folder, not UTF-8) are reported the same way; a UTF-8
+  byte order mark and Windows line endings are accepted.
+- `replay()` runs the events through a new engine and records each result with the best bid
+  and ask just afterwards. Output as a readable log (one line per event, notes, a summary, and
+  the final book as a ladder with the spread in the middle) or as JSON Lines.
+- `mmp replay SCRIPT [--format text|json] [--depth N]`, with exit codes 0 (replayed), 1 (script
+  can't be replayed; nothing printed to stdout), 2 (usage), 3 (the engine failed its own check
+  after the replay).
+- Examples: `examples/walkthrough.jsonl` (the hand-worked walkthrough, including its cancels)
+  and `examples/queue_priority.jsonl` (a later, higher bid goes first; equal bids queue).
+  Their output was checked by hand, then saved in `tests/golden/`; tests require the replay to
+  reproduce it exactly, in both formats, through `main()` and through a real subprocess.
+- Property tests: replaying a random script equals calling the engine directly, step by step;
+  replaying twice gives identical output; JSON output has one valid object per event.
+- Mutation-checked: 12 deliberate bugs (unknown fields allowed, 100.0 accepted, cancels skipped,
+  line numbers off by one, good lines run despite bad ones, changed wording, best prices taken
+  before the event, the consistency check skipped, a byte order mark breaking parsing, comment
+  lines becoming events, asks printed lowest first, cancel id 0 accepted). One survived at first
+  (asks printed in the wrong order: every test book had a single ask level); the ladder test now
+  uses two levels per side.
+
 ## Commands verified
 
 | Where | Python | Command | Result |
@@ -86,13 +111,14 @@ The exchange rules and full plan are in [`docs/design.md`](docs/design.md).
 | Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 61 passed (milestone 1) |
 | Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 82 passed (milestone 2) |
 | Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 107 passed (milestone 3) |
+| Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 160 passed (milestone 4) |
+| Claude's Linux workspace | 3.13 | `mmp replay` on both examples, both formats | matches tests/golden |
 
 ## Next
 
-Milestone 4: scripted replay. A JSON Lines file of orders and cancels is replayed through the
-engine, producing an event log (each order's result, every trade, the best bid and ask after
-each event), with a command-line tool and golden-file tests. Bad lines are reported with their
-line number.
+Milestone 5: visualization. A page that steps through a replay one event at a time, showing
+the book as a depth ladder, the best bid and ask, the incoming order, and the trades it caused,
+so the walkthrough can be followed visually.
 
 ## Concepts to review
 - What an order book is: bids, asks, best bid and ask, spread, depth.
@@ -107,3 +133,5 @@ line number.
 - Measuring what random tests generate, instead of assuming they cover the hard cases.
 - Stateful property testing: random sequences of operations with invariants after every step.
 - Why a refused cancel is a result, not an exception.
+- Golden-file tests: what they catch, and why their contents must be reviewed by hand.
+- Validating input completely before acting on any of it.

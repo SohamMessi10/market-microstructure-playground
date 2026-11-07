@@ -1,0 +1,10 @@
+# The orders from docs/walkthrough.md. Replay with: mmp replay examples/walkthrough.jsonl
+{"type": "order", "side": "sell", "price": 101, "quantity": 5}
+{"type": "order", "side": "sell", "price": 101, "quantity": 3, "note": "same price as #1, so it waits behind it"}
+{"type": "order", "side": "sell", "price": 102, "quantity": 4}
+{"type": "order", "side": "buy", "price": 100, "quantity": 6}
+{"type": "order", "side": "buy", "price": 102, "quantity": 10, "note": "sweeps 101, then reaches into 102"}
+{"type": "order", "side": "sell", "price": 99, "quantity": 8, "note": "trades at 100, better than its limit, then rests 2"}
+{"type": "cancel", "order_id": 3, "note": "removes only the 2 still resting"}
+{"type": "cancel", "order_id": 3}
+{"type": "cancel", "order_id": 1}

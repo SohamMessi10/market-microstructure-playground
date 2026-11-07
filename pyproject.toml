@@ -12,6 +12,9 @@ license = "MIT"
 license-files = ["LICENSE"]
 dependencies = []
 
+[project.scripts]
+mmp = "microstructure.cli:main"
+
 [project.optional-dependencies]
 # Versions were each released at least two weeks before they were pinned.
 dev = [

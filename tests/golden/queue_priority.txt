@@ -1,0 +1,16 @@
+line  order  event                     bid / ask    result
+   2     #1  buy 5 @ 100 (ana)         100 / -      rests 5
+   3     #2  buy 5 @ 100 (ben)         100 / -      rests 5
+             note: same price as ana, so ben queues behind her
+   4     #3  buy 5 @ 101 (cy)          101 / -      rests 5
+             note: arrived last but bids higher, so cy goes first
+   5     #4  sell 8 @ 100 (dee)        100 / -      filled (5 @ 101 with #3, 3 @ 100 with #1)
+             note: fills cy at 101, then ana at 100; ben gets nothing
+   6     #1  cancel #1                 100 / -      cancelled 2
+             note: ana cancels her last 2
+   7     #5  sell 4 @ 100 (eve)        100 / -      filled (4 @ 100 with #2)
+             note: now ben is first in line at 100
+
+5 orders, 1 cancel (0 refused), 3 trades, 12 traded
+final book:
+  bid    100       1  (1 order)
