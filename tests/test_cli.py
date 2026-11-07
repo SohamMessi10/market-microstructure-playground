@@ -75,6 +75,13 @@ def test_an_inconsistent_engine_exits_3(capsys, monkeypatch, tmp_path):
     assert out == "" and "simulated bug" in err
 
 
+def test_readme_example_output_is_real():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    block = readme.split("This is the real output of `mmp replay examples/queue_priority.jsonl`:", 1)[1]
+    shown = block.split("```", 2)[1].removeprefix("\n")
+    assert shown == (ROOT / "tests" / "golden" / "queue_priority.txt").read_text(encoding="utf-8")
+
+
 def test_installed_command_and_module_both_run():
     version = subprocess.run([sys.executable, "-m", "microstructure.cli", "--version"],
                              capture_output=True, text=True, check=True)

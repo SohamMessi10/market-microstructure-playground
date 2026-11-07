@@ -2,7 +2,8 @@
 
 ## Status
 
-Milestone 5 of 6 complete: the step-through replay page. The benchmark and README come next.
+**MVP complete.** All six milestones are done: matching, cancellation, replay, the step-through
+page, a measured benchmark, and the README.
 The exchange rules and full plan are in [`docs/design.md`](docs/design.md).
 
 ## Milestones
@@ -133,6 +134,28 @@ The exchange rules and full plan are in [`docs/design.md`](docs/design.md).
   two were real gaps (a trade log one step ahead, and removing the Content-Security-Policy),
   now caught by a mid-replay log check and a real blocked-request test.
 
+### Milestone 6: benchmark, README, and final review
+- `benchmarks/bench.py`: two seeded 200,000-event workloads (typical order flow around a
+  drifting mid; a deep book of almost 20,000 levels), 5 timed runs each, a comparison with the
+  reference engine at three sizes, and `--profile`. Every report begins with the Python version
+  and CPU. `tests/test_bench.py` checks the workloads are deterministic and valid and the script
+  runs. Results and caveats in `docs/benchmark.md`.
+- Measured (2-CPU Xeon @ 2.30 GHz, CPython 3.13, three runs): typical 188k–209k events/s, deep
+  book 227k–236k events/s; versus the reference engine 6× (2,000 events), 14× (5,000) and 64×
+  (20,000), since its cost per event grows with the book.
+- Two design questions answered by measurement: the sorted price list is not a bottleneck at
+  20,000 levels; and removing the duplicate validation a profile pointed at changed throughput by
+  −1.0% and −3.7% across 12 alternating runs, which is noise (cProfile inflates small, frequent
+  calls), so the change was reverted.
+- The full README: why, quick start, real example output (a test keeps it identical to the real
+  output), the rules, architecture, testing, performance, the page, limitations.
+- Fix: milestone 5's commands generated `queue_priority.html` in the top folder, and it was
+  committed by mistake. Removed; `.gitignore` now ignores `/*.html` (the committed pages live in
+  `docs/demo/`).
+- Writing the docs, two of my own numbers were wrong against the raw data (time per event, and
+  the profile's share for the duplicated checks) and were corrected before delivery; the README's
+  mutation count was corrected from an estimate to the actual count (61).
+
 ## Commands verified
 
 | Where | Python | Command | Result |
@@ -144,11 +167,13 @@ The exchange rules and full plan are in [`docs/design.md`](docs/design.md).
 | Claude's Linux workspace | 3.13 | `mmp replay` on both examples, both formats | matches tests/golden |
 | Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 190 passed with Playwright (3.13); browser tests skipped without it (milestone 5) |
 | Claude's Linux workspace | 3.13, Chromium 141 | `REQUIRE_BROWSER=1 pytest tests/test_viewer_browser.py` | 14 passed |
+| Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 195 passed with Playwright (3.13); 181 passed, 1 skipped without (milestone 6) |
+| Claude's Linux workspace | 3.13 | `python benchmarks/bench.py`, three runs | numbers in docs/benchmark.md |
 
 ## Next
 
-Milestone 6: a measured benchmark (stating the workload, Python version and machine), a profile
-of where the time goes, and the full README with resume and interview material.
+Optional extensions from the brief: market orders with explicit empty-book handling, a simulated
+market maker, a C++ matching core checked by the same tests and reference engine.
 
 ## Concepts to review
 - What an order book is: bids, asks, best bid and ask, spread, depth.
@@ -167,3 +192,6 @@ of where the time goes, and the full README with resume and interview material.
 - Validating input completely before acting on any of it.
 - Why embedding data in HTML needs escaping (`</script>`), and what a Content-Security-Policy does.
 - Equivalent mutants: when a surviving mutant means redundant code, not a missing test.
+- Benchmarking honestly: fixed seeds, several runs, ranges, stating the machine.
+- Why a profiler can mislead about small functions, and checking it with an A/B measurement.
+- Complexity you can see: constant cost per event versus cost that grows with the book.

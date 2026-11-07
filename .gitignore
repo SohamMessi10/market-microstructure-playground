@@ -20,3 +20,6 @@ htmlcov/
 
 # macOS
 .DS_Store
+
+# Pages written by `mmp view` into the top folder (docs/demo/ holds the committed ones)
+/*.html

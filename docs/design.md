@@ -89,8 +89,9 @@ These are the rules the engine implements and the tests check. Real exchanges ha
 | Find an order to cancel | `dict` of id → order | O(1) |
 
 A sorted list costs O(levels) to add a new price, but books have few active price levels and
-the list is contiguous memory, so it is simpler and usually faster than a tree in Python. The
-benchmark milestone measures this rather than assuming it.
+the list is contiguous memory, so it is simpler and usually faster than a tree in Python.
+**Measured** ([`benchmark.md`](benchmark.md)): a book with almost 20,000 price levels processes
+events no slower than one with about 100, so the O(levels) cost doesn't show at this scale.
 
 ## Script format
 
@@ -161,4 +162,4 @@ email, or serves from GitHub Pages (`docs/demo/`).
 3. Cancellation and quantity conservation, with stateful property tests. *(complete)*
 4. Scripted replay and a command-line tool. *(complete)*
 5. Visualization: step through a replay and see the book and trades. *(complete)*
-6. Benchmark (with workload and machine details) and README.
+6. Benchmark (with workload and machine details) and README. *(complete)*
