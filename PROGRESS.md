@@ -2,7 +2,7 @@
 
 ## Status
 
-Milestone 2 of 6 complete: matching and partial fills. Cancellation comes next.
+Milestone 3 of 6 complete: cancellation and quantity conservation. Scripted replay comes next.
 The exchange rules and full plan are in [`docs/design.md`](docs/design.md).
 
 ## Milestones
@@ -55,19 +55,44 @@ The exchange rules and full plan are in [`docs/design.md`](docs/design.md).
   than 3–4 times, so deep sweeps were barely tested. Adding the deep-sweep generator raised that
   to 12 trades across 11 price levels from a single order.
 
+### Milestone 3: cancellation and quantity conservation
+- `MatchingEngine.cancel(order_id)` removes only the resting quantity and returns a
+  `CancelResult`. Cancelling an unknown order, one that already traded in full, or one already
+  cancelled is refused with a reason and changes nothing; it is a result rather than an
+  exception, because late cancels are normal and a replay should carry on.
+- The engine keeps an `OrderRecord` per order (quantity, filled, cancelled, resting, state:
+  open, filled, cancelled). `order()` and `orders()` return copies.
+- `MatchingEngine.check()` adds accounting to the book's checks: quantity = filled + resting +
+  cancelled for every order, recorded fills equal that order's trades, resting quantity equals
+  what the book holds, every trade names a real buyer and seller, and the book holds no order
+  without an open record. 7 deliberate corruptions, each of which it must catch.
+- `Book.remove` takes an order out (a cancel), dropping its price level if it empties.
+- The walkthrough gains a step 5: cancelling a partly filled order, then two refused cancels.
+- The reference engine gains its own cancel and order history. A Hypothesis state machine
+  interleaves orders, cancels of any earlier order, and cancels of ids that never existed, and
+  after every step compares trades, both sides of the book, and every order's history with the
+  reference, and checks total bought = total sold. Measured over 100 runs: 281 successful
+  cancels (70 after a partial fill), 333 refused as filled, 208 as already cancelled.
+- Mutation-checked: 12 deliberate bugs (cancel not recorded, cancel counted as the whole order,
+  level total or id index not updated, no "already filled" check, resting or incoming fills not
+  recorded, a partly filled cancelled order not marked cancelled, the check ignoring fills,
+  book quantities or trade sides, an unknown cancel reported as success) each fail a test. The
+  state machine alone catches the four central ones.
+
 ## Commands verified
 
 | Where | Python | Command | Result |
 |---|---|---|---|
 | Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 61 passed (milestone 1) |
 | Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 82 passed (milestone 2) |
+| Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 107 passed (milestone 3) |
 
 ## Next
 
-Milestone 3: cancellation. Cancelling removes only the remaining quantity; cancelling an
-unknown or finished order is refused with a reason. Each order's history is tracked so that
-original = filled + resting + cancelled can be checked, with a stateful Hypothesis test mixing
-submits and cancels.
+Milestone 4: scripted replay. A JSON Lines file of orders and cancels is replayed through the
+engine, producing an event log (each order's result, every trade, the best bid and ask after
+each event), with a command-line tool and golden-file tests. Bad lines are reported with their
+line number.
 
 ## Concepts to review
 - What an order book is: bids, asks, best bid and ask, spread, depth.
@@ -80,3 +105,5 @@ submits and cancels.
 - Price improvement: why the incoming order trades at the resting price.
 - Differential testing against a simple reference implementation.
 - Measuring what random tests generate, instead of assuming they cover the hard cases.
+- Stateful property testing: random sequences of operations with invariants after every step.
+- Why a refused cancel is a result, not an exception.

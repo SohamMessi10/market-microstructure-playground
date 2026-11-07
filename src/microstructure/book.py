@@ -177,6 +177,14 @@ class Book:
             self._take_out(order, level)
         return order
 
+    def remove(self, order_id: int) -> Order:
+        """Take a resting order out of the book (a cancel). Its `remaining` is what was removed."""
+        order = self._index.get(order_id)
+        if order is None:
+            raise BookError(f"order {order_id} is not resting in the book")
+        self._take_out(order, self.side(order.side).level(order.price))
+        return order
+
     def _take_out(self, order: Order, level: PriceLevel) -> None:
         level.remove(order)
         del self._index[order.order_id]

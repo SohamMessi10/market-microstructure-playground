@@ -54,3 +54,14 @@ def test_walkthrough():
     assert all(traded[i] + resting.get(i, 0) == sizes[i] for i in sizes)
     bought, sold = traded[4] + traded[5], traded[1] + traded[2] + traded[3] + traded[6]
     assert bought == sold == 16
+
+    # 5. Cancel what's left of order 3: only its 2 resting units go.
+    result = engine.cancel(3)
+    assert (result.ok, result.cancelled) == (True, 2)
+    record = engine.order(3)
+    assert (record.quantity, record.filled, record.resting, record.cancelled) == (4, 2, 0, 2)
+    assert book.depth(SELL) == [LevelView(99, 2, 1)] and book.best_ask() == 99
+    assert len(engine.trades) == 4  # the earlier trade with order 5 stands
+    assert engine.cancel(3).reason == "order 3 was already cancelled"
+    assert engine.cancel(1).reason == "order 1 already traded in full"
+    engine.check()

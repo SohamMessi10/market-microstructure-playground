@@ -77,3 +77,21 @@ crosses. It trades against the best price first, and at each price against the o
 Bought in trades: 10 (order 5) + 6 (order 4) = 16. Sold in trades: 5 + 3 + 2 + 6 = 16. Every
 trade has one buyer and one seller, so the two always match. Four trades in total:
 5 @ 101, 3 @ 101, 2 @ 102, 6 @ 100.
+
+## 5. Cancel what's left
+
+**Cancel order 3.** It was 4 to sell at 102; 2 already traded in step 2, and 2 are resting.
+
+- The cancel removes the **2 still resting**. The 2 that traded stay traded: the trade with
+  order 5 already happened and isn't undone.
+- Order 3 now reads: 4 = 2 filled + 0 resting + 2 cancelled.
+- The 102 level is empty, so it disappears and the best ask stays 99.
+
+```
+   99 │ #6 ×2                   ← best ask 99
+──────┼──────────────────── no bids
+```
+
+**Cancel order 3 again**, or **cancel order 1** (which traded in full): both are refused with a
+reason ("already cancelled", "already traded in full") and nothing changes. A late cancel is
+normal on a real exchange, so it's an answer, not an error.

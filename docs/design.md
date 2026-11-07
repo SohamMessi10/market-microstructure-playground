@@ -46,8 +46,10 @@ These are the rules the engine implements and the tests check. Real exchanges ha
   a level orders are in arrival order; the sorted price list matches the levels; the id index
   holds exactly the resting orders.
 - **Not crossed:** best bid < best ask.
-- **Quantity conservation** (milestone 2 onward): for every order, original quantity = filled +
-  resting + cancelled. Every trade fills the same quantity on both sides.
+- **Quantity conservation:** for every order, original quantity = filled + resting + cancelled;
+  its recorded fills equal the sum of its trades; its resting quantity equals what the book
+  holds for it. Every trade names a real buy order and a real sell order, so total bought
+  always equals total sold. `MatchingEngine.check()` verifies all of this.
 - **Determinism:** the same events always produce the same trades and book.
 
 ## Architecture
@@ -66,8 +68,12 @@ These are the rules the engine implements and the tests check. Real exchanges ha
 - **`book.py`:** `PriceLevel` (orders at one price, FIFO), `BookSide` (levels sorted by price),
   `Book` (both sides plus an id index), and `check_invariants`.
 - **`engine.py`:** `MatchingEngine.submit` applies rules 3–7 and returns the trades, the
-  status (filled, partially filled, resting) and the quantity left resting. Cancellation
-  (rule 8) arrives in milestone 3.
+  status (filled, partially filled, resting) and the quantity left resting. `cancel` applies
+  rule 8: it removes the resting quantity, or refuses with a reason (no such order, already
+  traded in full, already cancelled). The engine keeps an `OrderRecord` for every order it
+  accepted (filled, cancelled, resting, state), which is what makes conservation checkable.
+  Records are never discarded, so memory grows with the number of orders; that is fine for
+  a simulator that replays scripted sessions, and a real engine would archive finished ones.
 - **`replay.py`** (milestone 4): reads a scripted event file and replays it deterministically.
 
 ### Data structures
@@ -95,7 +101,7 @@ benchmark milestone measures this rather than assuming it.
 
 1. Models, book data structures, and invariants. *(complete)*
 2. Matching and partial fills, with a reference engine for differential tests. *(complete)*
-3. Cancellation and quantity conservation, with stateful property tests.
+3. Cancellation and quantity conservation, with stateful property tests. *(complete)*
 4. Scripted replay and a command-line tool.
 5. Visualization: step through a replay and see the book and trades.
 6. Benchmark (with workload and machine details) and README.
