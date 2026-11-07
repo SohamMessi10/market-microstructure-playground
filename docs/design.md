@@ -76,7 +76,9 @@ These are the rules the engine implements and the tests check. Real exchanges ha
   a simulator that replays scripted sessions, and a real engine would archive finished ones.
 - **`replay.py`:** parses a script (below), replays it through a new engine, and formats the
   result as a readable log or as JSON Lines.
-- **`cli.py`:** the `mmp replay` command.
+- **`view.py`:** replays a script while capturing the book before and after every event, and
+  renders the step-through page from `templates/viewer.html`.
+- **`cli.py`:** the `mmp replay` and `mmp view` commands.
 
 ### Data structures
 
@@ -116,6 +118,33 @@ Decisions:
 - **Exit codes:** 0 replayed; 1 the script can't be replayed (nothing ran); 2 wrong command
   usage; 3 the engine failed its own consistency check afterwards (a bug).
 
+## The replay page (`mmp view`)
+
+One self-contained HTML file per script: the replay data is embedded as JSON and a small script
+draws it. No server, no build step, no outside requests, so it opens from disk, attaches to an
+email, or serves from GitHub Pages (`docs/demo/`).
+
+- **The ladder** puts every price on one vertical axis, highest at the top, so the best ask and
+  best bid meet at the spread. Each row's bar is that price's queue: one segment per order, in
+  arrival order, oldest on the left, so the left end is what trades next.
+- **Before and after.** For each event the page compares the queue before with the queue after.
+  Quantity that left (traded or cancelled) stays as a dashed segment in its exact position for
+  that step, and the order that just arrived is outlined. That is price-time priority made
+  visible: the front of the best queue gets eaten first.
+- **Whether an order left is asked of the book itself**, not of the depth-limited snapshot.
+  Otherwise a level pushed out of view by a new, better price would look as if all its orders
+  had gone. (Caught in review; there is a regression test.)
+- **One scale for the whole replay**, so a bar's width means the same quantity on every step.
+- **Limits:** up to 2,000 events (every step stores a snapshot) and 30 segments per level (the
+  rest merge into one "more" segment).
+- **Security:** text from the script (notes, trader names) is embedded with `<`, `>`, `&` and
+  U+2028/2029 escaped, so a note containing `</script>` can't end the data block, and it is
+  inserted into the page only with `textContent`. A Content-Security-Policy (`default-src
+  'none'`) blocks every outside request. Browser tests try both attacks.
+- **Accessibility:** buttons and a slider, plus ← → Home End; every ladder row has a text
+  description for screen readers; the event panel announces each step; light and dark themes
+  follow the system; no horizontal scrolling from 390 px up.
+
 ## Testing strategy
 
 - Hand-worked examples, written out step by step, then reproduced by the engine
@@ -131,5 +160,5 @@ Decisions:
 2. Matching and partial fills, with a reference engine for differential tests. *(complete)*
 3. Cancellation and quantity conservation, with stateful property tests. *(complete)*
 4. Scripted replay and a command-line tool. *(complete)*
-5. Visualization: step through a replay and see the book and trades.
+5. Visualization: step through a replay and see the book and trades. *(complete)*
 6. Benchmark (with workload and machine details) and README.

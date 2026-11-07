@@ -2,7 +2,7 @@
 
 ## Status
 
-Milestone 4 of 6 complete: scripted replay and the `mmp` command. Visualization comes next.
+Milestone 5 of 6 complete: the step-through replay page. The benchmark and README come next.
 The exchange rules and full plan are in [`docs/design.md`](docs/design.md).
 
 ## Milestones
@@ -104,6 +104,35 @@ The exchange rules and full plan are in [`docs/design.md`](docs/design.md).
   (asks printed in the wrong order: every test book had a single ask level); the ladder test now
   uses two levels per side.
 
+### Milestone 5: the step-through replay page
+- `mmp view SCRIPT [-o PAGE.html] [--depth N] [--title T]` writes one self-contained HTML page
+  (no server, no outside requests). `view.py` replays the script, capturing each event's book
+  before and after; `templates/viewer.html` draws it.
+- The page: a price ladder (highest price at the top, best ask and bid meeting at the spread);
+  each row's bar is that price's queue, one segment per order, oldest on the left; quantity that
+  traded or was cancelled in the step stays as a dashed segment in its exact place, and the new
+  order is outlined. An event panel (what happened, the note, this step's trades), a trade log,
+  buttons, a slider, ← → Home End, links to a step (`#step=5`), light and dark themes.
+- `docs/demo/` holds the pages for both examples; a test keeps them in sync with the code.
+  `docs/screenshots/` has four screenshots (desktop, queue, phone, dark).
+- Security: script text is escaped inside the embedded JSON and inserted only as text; a
+  Content-Security-Policy blocks all outside requests. Tested in Chromium with a note containing
+  `</script><script>alert(1)</script>` and an `<img onerror>`: shown as plain text, no dialog,
+  no injected element; and an image from another site is blocked by the policy.
+- Browser tests (Playwright, optional `.[browser]` extra; they skip without it): stepping,
+  keyboard, slider, deep links, the ladder's segments and labels, the trade log, refused
+  cancels, the empty script, and every step of both examples at 390, 768 and 1280 px in light
+  and dark mode with no sideways scrolling and no script errors. A new CI job installs Chromium
+  and runs them with `REQUIRE_BROWSER=1`, so a missing browser fails instead of skipping.
+- Bugs caught: (1) in review, a price level pushed out of view by a better price would have
+  been drawn as if its orders had left; fixed by asking the book, with a regression test.
+  (2) In screenshots, an average of 100.625 was displayed as 100.62; now up to 4 decimals.
+  (3) A wrong expected value in a new test (my miscount of the sequence), corrected by hand.
+- Mutation-checked: 13 deliberate bugs in the Python, JavaScript and CSS. Four survived at
+  first: two were equivalent (one showed the slider guard was redundant; it was removed), and
+  two were real gaps (a trade log one step ahead, and removing the Content-Security-Policy),
+  now caught by a mid-replay log check and a real blocked-request test.
+
 ## Commands verified
 
 | Where | Python | Command | Result |
@@ -113,12 +142,13 @@ The exchange rules and full plan are in [`docs/design.md`](docs/design.md).
 | Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 107 passed (milestone 3) |
 | Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 160 passed (milestone 4) |
 | Claude's Linux workspace | 3.13 | `mmp replay` on both examples, both formats | matches tests/golden |
+| Claude's Linux workspace | 3.11, 3.13, 3.14 | `python -m pytest`, dev and ci profiles | 190 passed with Playwright (3.13); browser tests skipped without it (milestone 5) |
+| Claude's Linux workspace | 3.13, Chromium 141 | `REQUIRE_BROWSER=1 pytest tests/test_viewer_browser.py` | 14 passed |
 
 ## Next
 
-Milestone 5: visualization. A page that steps through a replay one event at a time, showing
-the book as a depth ladder, the best bid and ask, the incoming order, and the trades it caused,
-so the walkthrough can be followed visually.
+Milestone 6: a measured benchmark (stating the workload, Python version and machine), a profile
+of where the time goes, and the full README with resume and interview material.
 
 ## Concepts to review
 - What an order book is: bids, asks, best bid and ask, spread, depth.
@@ -135,3 +165,5 @@ so the walkthrough can be followed visually.
 - Why a refused cancel is a result, not an exception.
 - Golden-file tests: what they catch, and why their contents must be reviewed by hand.
 - Validating input completely before acting on any of it.
+- Why embedding data in HTML needs escaping (`</script>`), and what a Content-Security-Policy does.
+- Equivalent mutants: when a surviving mutant means redundant code, not a missing test.

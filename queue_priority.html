@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Nothing may be loaded from anywhere: the page is complete in this one file. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+<title>Order book replay: queue_priority.jsonl</title>
+<style>
+:root {
+  --bg: #F4F6F8;
+  --surface: #FFFFFF;
+  --ink: #1C2430;
+  --muted: #5F6B7A;
+  --rule: #D5DCE3;
+  --bid: #2B6A8F;
+  --bid-soft: #DCEAF2;
+  --ask: #B23A48;
+  --ask-soft: #F5DFE2;
+  --now: #C98A0B;
+  --on-fill: #FFFFFF;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171D; --surface: #1A2129; --ink: #E6EBF0; --muted: #9AA6B4; --rule: #2E3946;
+    --bid: #6FB3D9; --bid-soft: #1D3443; --ask: #E5797F; --ask-soft: #45232A; --now: #F2B84B;
+    --on-fill: #0E1318; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171D; --surface: #1A2129; --ink: #E6EBF0; --muted: #9AA6B4; --rule: #2E3946;
+  --bid: #6FB3D9; --bid-soft: #1D3443; --ask: #E5797F; --ask-soft: #45232A; --now: #F2B84B;
+  --on-fill: #0E1318; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.5 "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.page { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 1.75rem; line-height: 1.2; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+.intro { color: var(--muted); margin: 4px 0 0; max-width: 62ch; }
+
+.controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  margin: 20px 0 16px; padding: 10px 12px; background: var(--surface);
+  border: 1px solid var(--rule); border-radius: 10px;
+}
+.controls .buttons { display: flex; gap: 6px; }
+button {
+  font: inherit; font-size: 0.9375rem; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--rule); border-radius: 8px; padding: 6px 12px; cursor: pointer; min-height: 40px;
+}
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: 0.45; cursor: default; }
+button.primary { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+:focus-visible { outline: 3px solid var(--now); outline-offset: 2px; }
+.scrub { flex: 1 1 200px; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.scrub input { flex: 1; min-width: 0; accent-color: var(--ink); }
+.step-count { white-space: nowrap; color: var(--muted); font-size: 0.9375rem; }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px; min-width: 0; }
+.panel h2 { font-size: 1rem; margin: 0 0 12px; font-weight: 650; }
+
+/* The ladder: one row per price, highest at the top, so the best ask and best bid meet at the spread. */
+.ladder { display: flex; flex-direction: column; gap: 4px; }
+.row { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) 3.5rem; align-items: center; gap: 10px; min-height: 34px; }
+.price { text-align: right; font-weight: 600; }
+.ask .price { color: var(--ask); }
+.bid .price { color: var(--bid); }
+.row.best .price::before { content: "best "; font-weight: 400; font-size: 0.75rem; color: var(--muted); }
+.total { text-align: right; color: var(--muted); }
+/* A price that emptied in this step: shown once more, faded, so you can see what left it. */
+.row.empty .price, .row.empty .total { opacity: 0.55; }
+.track { height: 30px; display: flex; }
+.bar { display: flex; gap: 2px; height: 100%; min-width: 0; transition: width 180ms ease-out; }
+.seg {
+  flex: var(--q) 1 0; min-width: 3px; border-radius: 4px; overflow: hidden; container-type: inline-size;
+  display: flex; align-items: center; justify-content: center; font-size: 0.75rem; white-space: nowrap;
+}
+.ask .seg { background: var(--ask); color: var(--on-fill); }
+.bid .seg { background: var(--bid); color: var(--on-fill); }
+.seg.new { box-shadow: 0 0 0 3px var(--now); position: relative; z-index: 1; }
+.ask .seg.gone { background: var(--ask-soft); color: var(--ask); border: 1.5px dashed var(--ask); }
+.bid .seg.gone { background: var(--bid-soft); color: var(--bid); border: 1.5px dashed var(--bid); }
+.ask .seg.more, .bid .seg.more { background: transparent; color: var(--muted); border: 1px solid var(--rule); }
+.seg span { padding: 0 4px; }
+@container (max-width: 40px) { .seg span { display: none; } }
+.spread {
+  display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) 3.5rem; gap: 10px; align-items: center;
+  color: var(--muted); font-size: 0.875rem; margin: 6px 0;
+}
+.spread::after { content: ""; grid-column: 2; border-top: 1px dashed var(--rule); }
+.spread span { grid-column: 1; text-align: right; white-space: nowrap; }
+.empty-book { color: var(--muted); margin: 24px 0; text-align: center; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 16px 0 0; padding: 12px 0 0;
+  border-top: 1px solid var(--rule); font-size: 0.8125rem; color: var(--muted); list-style: none; }
+.legend li { display: flex; align-items: center; gap: 6px; }
+.swatch { width: 22px; height: 12px; border-radius: 3px; display: inline-block; }
+.swatch.live { background: linear-gradient(90deg, var(--ask) 50%, var(--bid) 50%); }
+.swatch.new { background: var(--ink); box-shadow: 0 0 0 2px var(--now); }
+.swatch.gone { border: 1.5px dashed var(--muted); }
+
+/* The event panel */
+.where { color: var(--muted); font-size: 0.875rem; margin: 0; }
+.headline { font-size: 1.5rem; line-height: 1.25; margin: 4px 0 8px; font-weight: 650; }
+.headline.buy { color: var(--bid); }
+.headline.sell { color: var(--ask); }
+.trader { color: var(--muted); font-weight: 400; font-size: 1rem; }
+.outcome { margin: 0 0 12px; }
+.outcome.refused { color: var(--muted); }
+.note { margin: 0 0 12px; padding: 8px 12px; border-left: 3px solid var(--now); background: var(--bg); border-radius: 0 6px 6px 0; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+th, td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--rule); }
+th { color: var(--muted); font-weight: 500; font-size: 0.8125rem; }
+th:first-child, td:first-child { text-align: left; }
+.none { color: var(--muted); font-size: 0.9375rem; margin: 0; }
+.log { margin-top: 16px; }
+.log table { max-width: 640px; }
+.log-scroll { max-height: 320px; overflow-y: auto; }
+.keys { color: var(--muted); font-size: 0.8125rem; margin: 12px 0 0; }
+kbd { font: inherit; border: 1px solid var(--rule); border-radius: 4px; padding: 0 5px; background: var(--bg); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (max-width: 820px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .event { order: -1; }
+}
+@media (max-width: 480px) {
+  h1 { font-size: 1.5rem; }
+  .row, .spread { grid-template-columns: 3.5rem minmax(0, 1fr) 2.75rem; gap: 6px; }
+  .row.best .price::before { content: none; }
+  button { padding: 6px 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .bar { transition: none; } }
+@media (hover: none) and (pointer: coarse) { .keys { display: none; } }  /* no keyboard on a phone */
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1 id="title"></h1>
+    <p class="intro">Each row is one price. Its bar is the queue of orders waiting there, oldest on the left, so the left end trades first.</p>
+  </header>
+
+  <nav class="controls" aria-label="Replay controls">
+    <div class="buttons">
+      <button type="button" id="first" aria-label="First step">&#x23EE;</button>
+      <button type="button" id="prev">Previous</button>
+      <button type="button" id="next" class="primary">Next</button>
+      <button type="button" id="last" aria-label="Last step">&#x23ED;</button>
+    </div>
+    <div class="scrub">
+      <label class="visually-hidden" for="scrubber">Step</label>
+      <input type="range" id="scrubber" min="0" value="0">
+      <span class="step-count" id="step-count"></span>
+    </div>
+  </nav>
+
+  <main class="layout">
+    <section class="panel book" aria-labelledby="book-heading">
+      <h2 id="book-heading">Order book after this step</h2>
+      <div class="ladder" id="ladder" role="list"></div>
+      <ul class="legend">
+        <li><span class="swatch live"></span>a resting order (sell red, buy blue), width = quantity</li>
+        <li><span class="swatch new"></span>the order that just arrived</li>
+        <li><span class="swatch gone"></span>left the book in this step</li>
+      </ul>
+    </section>
+
+    <section class="panel event" aria-live="polite" aria-labelledby="event-heading">
+      <h2 id="event-heading" class="visually-hidden">This step</h2>
+      <p class="where" id="where"></p>
+      <p class="headline" id="headline"></p>
+      <p class="outcome" id="outcome"></p>
+      <p class="note" id="note" hidden></p>
+      <div id="step-trades"></div>
+      <p class="keys"><kbd>&larr;</kbd> <kbd>&rarr;</kbd> step, <kbd>Home</kbd> <kbd>End</kbd> jump</p>
+    </section>
+  </main>
+
+  <section class="panel log" aria-labelledby="log-heading">
+    <h2 id="log-heading">Trades so far</h2>
+    <div class="log-scroll" id="log"></div>
+  </section>
+</div>
+
+<script type="application/json" id="replay-data">{"title":"Order book replay: queue_priority.jsonl","depth":8,"steps":[{"line":2,"order_id":1,"kind":"order","headline":"Buy 5 at 100","outcome":"Nothing to trade against, so all 5 rest at its limit.","ok":true,"note":"","trades":[],"best_bid":100,"best_ask":null,"asks":[],"bids":[{"price":100,"quantity":5,"segments":[{"id":1,"qty":5,"kind":"new"}]}],"side":"buy","price":100,"quantity":5,"trader":"ana"},{"line":3,"order_id":2,"kind":"order","headline":"Buy 5 at 100","outcome":"Nothing to trade against, so all 5 rest at its limit.","ok":true,"note":"same price as ana, so ben queues behind her","trades":[],"best_bid":100,"best_ask":null,"asks":[],"bids":[{"price":100,"quantity":10,"segments":[{"id":1,"qty":5,"kind":"live"},{"id":2,"qty":5,"kind":"new"}]}],"side":"buy","price":100,"quantity":5,"trader":"ben"},{"line":4,"order_id":3,"kind":"order","headline":"Buy 5 at 101","outcome":"Nothing to trade against, so all 5 rest at its limit.","ok":true,"note":"arrived last but bids higher, so cy goes first","trades":[],"best_bid":101,"best_ask":null,"asks":[],"bids":[{"price":101,"quantity":5,"segments":[{"id":3,"qty":5,"kind":"new"}]},{"price":100,"quantity":10,"segments":[{"id":1,"qty":5,"kind":"live"},{"id":2,"qty":5,"kind":"live"}]}],"side":"buy","price":101,"quantity":5,"trader":"cy"},{"line":5,"order_id":4,"kind":"order","headline":"Sell 8 at 100","outcome":"Filled in 2 trades at an average price of 100.625.","ok":true,"note":"fills cy at 101, then ana at 100; ben gets nothing","trades":[{"id":1,"price":101,"quantity":5,"buy":3,"sell":4},{"id":2,"price":100,"quantity":3,"buy":1,"sell":4}],"best_bid":100,"best_ask":null,"asks":[],"bids":[{"price":101,"quantity":0,"segments":[{"id":3,"qty":5,"kind":"gone"}]},{"price":100,"quantity":7,"segments":[{"id":1,"qty":3,"kind":"gone"},{"id":1,"qty":2,"kind":"live"},{"id":2,"qty":5,"kind":"live"}]}],"side":"sell","price":100,"quantity":8,"trader":"dee"},{"line":6,"order_id":1,"kind":"cancel","headline":"Cancel order 1","outcome":"Cancelled the 2 still resting.","ok":true,"note":"ana cancels her last 2","trades":[],"best_bid":100,"best_ask":null,"asks":[],"bids":[{"price":100,"quantity":5,"segments":[{"id":1,"qty":2,"kind":"gone"},{"id":2,"qty":5,"kind":"live"}]}]},{"line":7,"order_id":5,"kind":"order","headline":"Sell 4 at 100","outcome":"Filled in 1 trade at 100.","ok":true,"note":"now ben is first in line at 100","trades":[{"id":3,"price":100,"quantity":4,"buy":2,"sell":5}],"best_bid":100,"best_ask":null,"asks":[],"bids":[{"price":100,"quantity":1,"segments":[{"id":2,"qty":4,"kind":"gone"},{"id":2,"qty":1,"kind":"live"}]}],"side":"sell","price":100,"quantity":4,"trader":"eve"}]}</script>
+<script>
+"use strict";
+(function () {
+  const data = JSON.parse(document.getElementById("replay-data").textContent);
+  const steps = data.steps;
+  const $ = (id) => document.getElementById(id);
+
+  // Text from the script only ever goes in through textContent, never innerHTML.
+  function el(tag, attrs, text) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs || {})) node.setAttribute(key, value);
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  // One scale for the whole replay, so bars don't jump in size between steps.
+  let maxQty = 1;
+  for (const step of steps) {
+    for (const row of step.asks.concat(step.bids)) {
+      maxQty = Math.max(maxQty, row.segments.reduce((sum, s) => sum + s.qty, 0));
+    }
+  }
+
+  // Every trade up to and including each step, newest first when shown.
+  const tradesUpTo = [];
+  let running = [];
+  for (const step of steps) { running = running.concat(step.trades); tradesUpTo.push(running); }
+
+  const title = data.title || "Order book replay";
+  $("title").textContent = title;
+  const scrubber = $("scrubber");
+  scrubber.max = String(steps.length);
+  let current = 0;
+
+  function segmentLabel(seg, step) {
+    if (seg.kind === "more") return `${seg.count} more orders, ${seg.qty} in total`;
+    if (seg.kind === "gone") return `order ${seg.id}: ${seg.qty} ${step.kind === "cancel" ? "cancelled" : "traded"} in this step`;
+    if (seg.kind === "new") return `order ${seg.id}: ${seg.qty} resting, just arrived`;
+    return `order ${seg.id}: ${seg.qty} resting`;
+  }
+
+  function renderRow(row, side, step, best) {
+    const node = el("div", { class: `row ${side}${best ? " best" : ""}${row.quantity ? "" : " empty"}`, role: "listitem" });
+    const displayed = row.segments.reduce((sum, s) => sum + s.qty, 0);
+    const word = side === "ask" ? "Sell" : "Buy";
+    node.setAttribute("aria-label", `${word} side at ${row.price}: ${row.quantity} resting. ` +
+      row.segments.map((s) => segmentLabel(s, step)).join("; "));
+    node.append(el("span", { class: "price" }, String(row.price)));
+    const track = el("div", { class: "track", "aria-hidden": "true" });
+    const bar = el("div", { class: "bar" });
+    bar.style.width = `${(displayed / maxQty) * 100}%`;
+    for (const seg of row.segments) {
+      const piece = el("div", { class: `seg ${seg.kind}`, title: segmentLabel(seg, step) });
+      piece.style.setProperty("--q", String(seg.qty));
+      piece.append(el("span", {}, seg.kind === "more" ? `+${seg.count}` : `#${seg.id} ×${seg.qty}`));
+      bar.append(piece);
+    }
+    track.append(bar);
+    node.append(track, el("span", { class: "total" }, String(row.quantity)));
+    return node;
+  }
+
+  function renderLadder(step) {
+    const ladder = $("ladder");
+    ladder.replaceChildren();
+    if (!step) {
+      ladder.append(el("p", { class: "empty-book" }, "The book is empty. Press Next to send the first order."));
+      return;
+    }
+    const asks = step.asks, bids = step.bids;
+    if (!asks.length && !bids.length) {
+      ladder.append(el("p", { class: "empty-book" }, "No orders are resting. The next order starts the book again."));
+      return;
+    }
+    for (const row of asks) ladder.append(renderRow(row, "ask", step, row.price === step.best_ask));
+    let gap;
+    if (step.best_bid !== null && step.best_ask !== null) gap = `spread ${step.best_ask - step.best_bid}`;
+    else if (step.best_ask !== null) gap = "no buyers";
+    else if (step.best_bid !== null) gap = "no sellers";
+    else gap = "empty";
+    const spread = el("div", { class: "spread", role: "listitem" });
+    spread.append(el("span", {}, gap));
+    ladder.append(spread);
+    for (const row of bids) ladder.append(renderRow(row, "bid", step, row.price === step.best_bid));
+  }
+
+  function tradeTable(trades, caption) {
+    const table = el("table");
+    table.append(el("caption", { class: "visually-hidden" }, caption));
+    const head = el("tr");
+    for (const h of ["Trade", "Quantity", "Price", "Buyer", "Seller"]) head.append(el("th", { scope: "col" }, h));
+    const thead = el("thead");
+    thead.append(head);
+    table.append(thead);
+    const body = el("tbody");
+    for (const t of trades) {
+      const tr = el("tr");
+      for (const v of [`#${t.id}`, t.quantity, t.price, `order ${t.buy}`, `order ${t.sell}`]) tr.append(el("td", {}, String(v)));
+      body.append(tr);
+    }
+    table.append(body);
+    return table;
+  }
+
+  function renderEvent(step, index) {
+    const headline = $("headline"), outcome = $("outcome"), note = $("note"), tradesBox = $("step-trades");
+    headline.className = "headline";
+    outcome.className = "outcome";
+    tradesBox.replaceChildren();
+    if (!step) {
+      $("where").textContent = "Before the first event";
+      headline.textContent = "Empty book";
+      outcome.textContent = `This replay has ${steps.length} event${steps.length === 1 ? "" : "s"}.`;
+      note.hidden = true;
+      return;
+    }
+    $("where").textContent = `Script line ${step.line}, order ${step.order_id}`;
+    headline.textContent = step.headline;
+    if (step.kind === "order") {
+      headline.classList.add(step.side);
+      if (step.trader) headline.append(el("span", { class: "trader" }, ` by ${step.trader}`));
+    }
+    outcome.textContent = step.outcome;
+    if (!step.ok) outcome.classList.add("refused");
+    note.hidden = !step.note;
+    note.textContent = step.note || "";
+    if (step.kind === "order") {
+      tradesBox.append(step.trades.length
+        ? tradeTable(step.trades, "Trades in this step")
+        : el("p", { class: "none" }, "No trades in this step."));
+    }
+  }
+
+  function renderLog(index) {
+    const log = $("log");
+    log.replaceChildren();
+    const trades = index ? tradesUpTo[index - 1] : [];
+    if (!trades.length) { log.append(el("p", { class: "none" }, "No trades yet.")); return; }
+    log.append(tradeTable(trades.slice().reverse(), "All trades so far, newest first"));
+  }
+
+  function show(index, updateHash) {
+    current = Math.max(0, Math.min(steps.length, index));
+    const step = current ? steps[current - 1] : null;
+    renderLadder(step);
+    renderEvent(step, current);
+    renderLog(current);
+    scrubber.value = String(current);
+    $("step-count").textContent = `Step ${current} of ${steps.length}`;
+    $("first").disabled = $("prev").disabled = current === 0;
+    $("next").disabled = $("last").disabled = current === steps.length;
+    if (updateHash) history.replaceState(null, "", `#step=${current}`);
+  }
+
+  $("first").addEventListener("click", () => show(0, true));
+  $("prev").addEventListener("click", () => show(current - 1, true));
+  $("next").addEventListener("click", () => show(current + 1, true));
+  $("last").addEventListener("click", () => show(steps.length, true));
+  scrubber.addEventListener("input", () => show(Number(scrubber.value), true));
+  document.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    // preventDefault below also stops the slider's own arrow-key handling, so it never moves twice.
+    const moves = { ArrowLeft: current - 1, ArrowRight: current + 1, Home: 0, End: steps.length };
+    if (event.key in moves) { event.preventDefault(); show(moves[event.key], true); }
+  });
+
+  const match = /^#step=(\d+)$/.exec(location.hash);
+  show(match ? Number(match[1]) : 0, false);
+})();
+</script>
+</body>
+</html>

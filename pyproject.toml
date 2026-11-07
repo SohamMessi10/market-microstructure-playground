@@ -21,9 +21,17 @@ dev = [
     "pytest>=9.1,<10",
     "hypothesis>=6.170,<7",
 ]
+# Only for tests/test_viewer_browser.py, which skips itself without it.
+# After installing, also run: python -m playwright install chromium
+browser = [
+    "playwright==1.56.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+microstructure = ["templates/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
